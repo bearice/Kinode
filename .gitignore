@@ -1,0 +1,5 @@
+*.node
+*.o
+*.js
+fbtest
+.DS_Store
