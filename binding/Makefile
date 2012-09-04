@@ -9,7 +9,7 @@ CFLAGS=-c -pipe
 CXXFLAGS=-pipe -shared
 LDFLAGS=
 
-TARGET=fb.node
+TARGET=fb.node kanvas.node
 
 NODE_INCLUDES=-I$(NODE)/src -I$(NODE)/deps/v8/include -I$(NODE)/deps/uv/include
 
