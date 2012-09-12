@@ -1,0 +1,78 @@
+#!/bin/sh
+#
+# $Id: usb-watchdog-helper 7666 2011-10-18 23:55:53Z NiLuJe $
+#
+
+# Get hackname from the script's path (NOTE: Will only work for scripts called from /mnt/us/${KH_HACKNAME}/bin)
+KH_HACKNAME="${0##/mnt/us/}"
+KH_HACKNAME="${KH_HACKNAME%%/bin/*}"
+
+# Try to pull our custom helper lib
+_KH_FUNCS="/mnt/us/${KH_HACKNAME}/bin/libkh"
+if [ -f ${_KH_FUNCS} ] ; then
+    . ${_KH_FUNCS}
+else
+    # Pull default helper functions for logging
+    _FUNCTIONS=/etc/rc.d/functions
+    [ -f ${_FUNCTIONS} ] && . ${_FUNCTIONS}
+    # We couldn't get our custom lib, abort
+    msg "couldn't source libkh from '${KH_HACKNAME}'" W
+    exit 0
+fi
+
+# Make sure the screensavers shuffling script is exec'able (check if it exists first, in case we're fonts' watchdog, and ss isn't installed)
+if [ -f ${LINKSS_SHUFFLE} ] ; then
+    [ -x ${LINKSS_SHUFFLE} ] || chmod +x ${LINKSS_SHUFFLE}
+fi
+# Make sure the fc cache script is exec'able (check if it exists first, in case we're ss' watchdog, and fonts isn't installed)
+if [ -f ${FONTCONFIG_HELPER} ] ; then
+    [ -x ${FONTCONFIG_HELPER} ] || chmod +x ${FONTCONFIG_HELPER}
+fi
+# Make sure shlock is exec'able
+[ -x ${USBWD_LOCK_BIN} ] || chmod +x ${USBWD_LOCK_BIN}
+# Make sure our lockfile has somewhere to live
+[ -d ${USBWD_LOCK_DIR} ] || mkdir -p ${USBWD_LOCK_DIR}
+
+# Add the PID of the dbus-monitor(s) to the list of running daemons to kill
+echo "$( pidof dbus-monitor )" >> ${WATCHDOG_PID}
+# Add our PID to the list of running daemons to kill
+echo "$$" >> ${WATCHDOG_PID}
+
+while read line ; do
+    if [ -f ${USBWD_REBOOT_FILE} ] ; then
+        # We asked for a reboot on unplug, let's see...
+        if echo ${line} | grep usbPlugOut > /dev/null 2>&1 ; then
+            # Yep, we're plugged out! Let's do our stuff in a locked session to avoid double-reboots...
+            if ${USBWD_LOCK_BIN} -p $$ -f ${USBWD_LOCK_FILE} ; then
+                # We only want to do this once, so kill the reboot file
+                rm -f ${USBWD_REBOOT_FILE}
+                # Log our restart
+                kh_msg "restarting framework via USB watchdog" I q
+                # Give us some time to settle, and provide some feedback to the user
+                unset wd_spinner
+                for wd_countdown in $(seq 1 10) ; do
+                    eips 1 $((${SCREEN_Y_RES} / ${EIPS_Y_RES} - 2)) "restarting framework${wd_spinner}"
+                    wd_spinner="${wd_spinner}."
+                    sleep 1
+                done
+                # Try to refresh fontconfig cache & config (Might take a few minutes!)
+                if [ -f ${FONTCONFIG_HELPER} ] ; then
+                    ${FONTCONFIG_HELPER}
+                fi
+                # Try to shuffle screensavers
+                if [ -f ${LINKSS_SHUFFLE} ] ; then
+                    ${LINKSS_SHUFFLE} watchdog
+                fi
+                # Sync the disk to avoid wreaking havoc on the FS
+                sync
+                # And restart the framework
+                /etc/init.d/framework restart
+                # And then remove our lock file
+                rm -rf ${USBWD_LOCK_FILE}
+            else
+                # Meep! We're already locked doing a reboot, something went wrong...
+                kh_msg "we're already restarting the framework via USB watchdog, go away" W a "framework restart already in progress"
+            fi
+        fi
+    fi
+done

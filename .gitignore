@@ -3,3 +3,6 @@
 *.js
 fbtest
 .DS_Store
+*.obj
+*.ttf
+

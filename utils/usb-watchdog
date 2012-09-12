@@ -1,0 +1,45 @@
+#!/bin/sh
+#
+# $Id: usb-watchdog 7664 2011-10-18 23:23:48Z NiLuJe $
+#
+
+# Try to pull our custom helper lib
+_KH_FUNCS="/root/util/libkh"
+if [ -f ${_KH_FUNCS} ] ; then
+    . ${_KH_FUNCS}
+else
+    # Pull default helper functions for logging
+    _FUNCTIONS=/etc/rc.d/functions
+    [ -f ${_FUNCTIONS} ] && . ${_FUNCTIONS}
+    # We couldn't get our custom lib, abort
+    msg "couldn't source libkh from '${KH_HACKNAME}'" W
+    exit 0
+fi
+
+wd_fail_count=0
+
+# Make sure the watchdog's always up
+while true ; do
+    # Make sure we still have an helper to run, in case it gets wiped while we're running (that shouldn't happen under normal circumstances, but, hey, I've seen logs where it apparently happened...)
+    if [ -x ${WATCHDOG_HELPER} ] ; then
+        kh_msg "starting USB watchdog (dbus-monitor)" I
+        # Reset fail counter on success
+        wd_fail_count=0
+        /usr/bin/dbus-monitor --system "type='signal', interface='com.lab126.hal', path='/default', member='usbPlugOut'" | ${WATCHDOG_HELPER}
+    else
+        # Die in a fire after 3 fails (roughly 15s)
+        if [ $wd_fail_count -gt 3 ] ; then
+            kh_msg "missing helper script, giving up on the usb watchdog" W a "no helper script, give up on usb watchdog"
+            # NOTE: We may be leaving a stale pidfile behind, but linkss/linkfonts should take care of it, and that'll pop up in the logs, so don't explicitly remove it now.
+            exit 0
+        fi
+        kh_msg "couldn't start USB watchdog (missing helper)" W
+        # Increment our failure counter
+        wd_fail_count=$(( wd_fail_count + 1 ))
+    fi
+    # Sleep well... (outside of the if block, because we do want to check that the helper still exists each time...)
+    sleep 5
+done
+
+# Remove our pidfile
+rm -f ${WATCHDOG_PID}

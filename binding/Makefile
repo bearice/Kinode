@@ -1,25 +1,36 @@
 HOST=/Volumes/XTools/arm-kindle-linux-gnueabi/bin/arm-kindle-linux-gnueabi
 NODE=/Users/bearice/Working/node
 
+PKG_CONFIG_PATH=/Volumes/XTools/arm-kindle-linux-gnueabi/arm-kindle-linux-gnueabi/sysroot/usr/local/lib/pkgconfig
+
 CC=$(HOST)-gcc
 CXX=$(HOST)-g++
-LD=$(HOST)-gcc
+LD=$(HOST)-g++
 
-CFLAGS=-c -pipe
-CXXFLAGS=-pipe -shared
-LDFLAGS=
+CXXFLAGS=-c -pipe $(NODE_INCLUDES) $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --cflags freetype2) -g3
+LDFLAGS=-shared -g3
+LIBS=-static-libstdc++ -Wl,-static $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --libs freetype2) -Wl,-Bdynamic
 
-TARGET=fb.node kanvas.node
+OBJECTS=$(patsubst %.cc,%.obj,$(wildcard *.cc))
+TARGET=binding.node index.js
 
 NODE_INCLUDES=-I$(NODE)/src -I$(NODE)/deps/v8/include -I$(NODE)/deps/uv/include
 
+HEADERS=$(wildcard *.h)
+
 all: $(TARGET)
 
-%.node: %.cc
-	$(CXX) $(CXXFLAGS) $(NODE_INCLUDES) -o "$@" "$<"
+%.obj: %.cc $(HEADERS)
+	$(CXX) $(CXXFLAGS) -o "$@" "$<"
+
+binding.node: $(OBJECTS)
+	$(LD) $(LDFLAGS) -o "$@" $(OBJECTS) $(LIBS) 
+
+%.js: %.coffee
+	coffee -c "$<"
 
 clean:
-	rm -rf $(TARGET) *.o
+	rm -rf $(TARGET) 
 
 .PHONY: all clean 
 

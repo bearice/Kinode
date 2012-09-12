@@ -1,0 +1,155 @@
+##
+#
+#  Custom logging code/constants for the hacks
+#
+#  $Id: libkh 8136 2012-06-07 05:08:22Z NiLuJe $
+#
+#  kate: syntax bash;
+#
+##
+
+# Pull some helper functions for logging
+_FUNCTIONS=/etc/rc.d/functions
+[ -f ${_FUNCTIONS} ] && . ${_FUNCTIONS}
+
+## Some constants
+K2_SCREEN_SIZE="600x800"
+KDX_SCREEN_SIZE="824x1200"
+
+# And our actual screen size (from rc.d/functions)
+MY_SCREEN_SIZE="${SCREEN_X_RES}x${SCREEN_Y_RES}"
+
+# USB watchdog lock file. It needs to be outside of the userstore, because vfat doesn't handle hardlinks, and we need hardlinks for atomic locking.
+USBWD_LOCK_DIR="/var/local/run"
+USBWD_LOCK_FILE="${USBWD_LOCK_DIR}/usbwd.lock"
+USBWD_LOCK_BIN="${KH_HACK_BINDIR}/shlock"
+
+## And some more hack-specific constants
+KH_HACK_BINDIR="/root/util"
+USBWD_REBOOT_FILE="/mnt/us/enable_usbnet"
+WATCHDOG_DAEMON="${KH_HACK_BINDIR}/usb-watchdog"
+WATCHDOG_HELPER="${KH_HACK_BINDIR}/usb-watchdog-helper"
+WATCHDOG_PID="${USBWD_LOCK_DIR}/usb-watchdog.pid"
+
+# Are we on a K3? NOTE: We don't use is_Luigi_Platform() because we're not sure that the 3.x FW won't one day be implemented
+# on older platforms than Luigi/Shasta.
+if grep '^Kindle 3' /etc/prettyversion.txt > /dev/null 2>&1 ; then
+    IS_K3="true"
+else
+    IS_K3="false"
+fi
+
+# And are we on a K4?
+if grep '^Kindle 4' /etc/prettyversion.txt > /dev/null 2>&1 ; then
+    IS_K4="true"
+else
+    IS_K4="false"
+fi
+
+## FIXME: Ugly hack for K4 support. If we're on a K4, assume we're a K3.
+if [ "${IS_K4}" == "true" ] ; then
+    IS_K3="true"
+fi
+
+## Custom logging
+# Arg 1 is logging message
+# Arg 2 is logging level
+# Arg 3 is eips logging status (quiet|verbose|auto)
+# Arg 4 is eips message
+##
+kh_msg()
+{
+    # We need at least two args
+    if [ $# -lt 2 ] ; then
+        msg "not enough arguments passed to kh_msg ($# while we need at least 2)" W
+        return
+    fi
+
+    kh_msg_string="${1}"
+    kh_loglvl="${2}"
+
+    # Check if we want to trigger an additionnal eips print
+    case "${3}" in
+        "q" | "Q" )
+            kh_show_eips="false"
+        ;;
+        "v" | "V" )
+            kh_show_eips="true"
+        ;;
+        * )
+            # Only show if we find the verbose trigger file for this hack
+            if [ -f "${KH_HACK_BASEDIR}/verbose" ] ; then
+                kh_show_eips="true"
+            else
+                kh_show_eips="false"
+            fi
+        ;;
+    esac
+
+    # If we have a fourth argument, use it as a specific string to pass to eips, else use the same as msg
+    if [ -n "${4}" ] ; then
+        kh_eips_string="${4}"
+    else
+        kh_eips_string="${kh_msg_string}"
+    fi
+
+    # Print to log
+    msg "${kh_msg_string}" "${kh_loglvl}"
+
+    # Do we want to trigger an eips print?
+    if [ "${kh_show_eips}" == "true" ] ; then
+        # Detect from which hack we've been called, we'll use it to tag our message
+        case "${KH_HACKNAME}" in
+            "linkss" )
+                kh_eips_tag="S"
+            ;;
+            "linkfonts" )
+                kh_eips_tag="F"
+            ;;
+            "usbnet" )
+                kh_eips_tag="N"
+            ;;
+            "linkjail" )
+                kh_eips_tag="J"
+            ;;
+            * )
+                # Huh, shouldn't happen, but log it anyway.
+                msg "couldn't detect which eips tag to use for hack '${KH_HACKNAME}'" W
+                kh_eips_tag="U"
+            ;;
+        esac
+
+        # If loglevel is anything else than I, add it to our tag
+        if [ "${kh_loglvl}" != "I" ] ; then
+            kh_eips_tag="${kh_eips_tag} ${kh_loglvl}"
+        fi
+
+        # Tag our message
+        kh_eips_string="${kh_eips_tag} ${kh_eips_string}"
+
+        # Since eips doesn't trigger a full refresh, we'll have to padd our string with blank spaces to make sure two consecutive messages don't run into each other.
+        while [ ${#kh_eips_string} -lt 48 ] ; do
+            kh_eips_string="${kh_eips_string} "
+        done
+
+        # And finally, show our formatted 48 characters message on the bottom of the screen (NOTE: Redirect to /dev/null to kill unavailable character & pixel not in range warning messages)
+        eips 1 $((${SCREEN_Y_RES} / ${EIPS_Y_RES} - 2)) "${kh_eips_string}" >/dev/null
+
+        # NOTE: For some reason (probably relating to the state of the eInk controller), when eips is triggered during a reboot/shutdown/update runlevel (ie. when stopping stuff),
+        # only the last message will be shown, and that only after a time (when the eInk controller changes state?), to the point that you might see the last message (usually usbnet) at the
+        # beginning of the boot process when rebooting!
+    fi
+}
+
+## Fatal error logging
+kh_die()
+{
+    # We need at least two args
+    if [ $# -lt 1 ] ; then
+        msg "not enough arguments passed to kh_die ($# while we need at least 1)" W
+        return
+    fi
+
+    kh_msg "${1}" W "${2}" "${3}"
+    exit 0
+}

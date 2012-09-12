@@ -15,44 +15,31 @@
 #include <node.h>
 #include <node_buffer.h>
 
+#include "fb.h"
+
 using namespace std;
 using namespace v8;
 
-class FBDev : public node::ObjectWrap{
-public:
-    static void Init(Handle<Object> target);
-
-private:
-    FBDev();
-    ~FBDev();
-    
-    static Handle<Value> New(const Arguments& args);
-    static Handle<Value> Clear(const Arguments& args);
-    static Handle<Value> Flush(const Arguments& args);
-    static Handle<Value> Splash(const Arguments& args);
-    static Handle<Value> Update(const Arguments& args);
-
-    char*  fbp;
-    int    fbfd;
-    struct fb_var_screeninfo vinfo;
-    struct fb_fix_screeninfo finfo;
-
-    inline void update_pixel(int x,int y,char pix);
-};
-
-static void do_nothing(char* foo,void* bar){};
+#define SHMLEN finfo->smem_len
+#define XRES vinfo->xres
+#define YRES vinfo->yres
 
 FBDev::FBDev(){
     fbfd = open("/dev/fb0", O_RDWR);
-    ioctl(fbfd, FBIOGET_FSCREENINFO, &finfo);
-    ioctl(fbfd, FBIOGET_VSCREENINFO, &vinfo);
-    fbp = (char*)mmap(0, finfo.smem_len, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, 0);
+	vinfo = new struct fb_var_screeninfo;
+	finfo = new struct fb_fix_screeninfo;
+	fbioctl(FBIOGET_FSCREENINFO, finfo);
+    fbioctl(FBIOGET_VSCREENINFO, vinfo);
+    fbp = (char*)mmap(0, SHMLEN, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, 0);
 }
 
 FBDev::~FBDev(){
-    munmap(fbp,finfo.smem_len);
-    close(fbfd);
+	if(vinfo) delete (vinfo);
+	if(finfo) delete (finfo);
+    if(fbp)munmap(fbp,SHMLEN);
+    if(fbfd)close(fbfd);
 }
+
 
 #define SYM(x)  String::NewSymbol(x)
 #define FUNC(x) FunctionTemplate::New(x)->GetFunction()
@@ -64,10 +51,12 @@ void FBDev::Init(Handle<Object> target) {
     tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
     // Prototype
-    tpl->PrototypeTemplate()->Set(SYM("clear"),FUNC(Clear));
-    tpl->PrototypeTemplate()->Set(SYM("flush"),FUNC(Flush));
-    tpl->PrototypeTemplate()->Set(SYM("splash"),FUNC(Splash));
-    tpl->PrototypeTemplate()->Set(SYM("update"),FUNC(Update));
+#define BIND(name,func) tpl->PrototypeTemplate()->Set(SYM(#name),FUNC(func));    
+    BIND(clear,Clear);
+    BIND(flush,Flush);
+    BIND(splash,Splash);
+    BIND(update,Update);
+#undef BIND
 
     Persistent<Function> constructor = Persistent<Function>::New(tpl->GetFunction());
     target->Set(String::NewSymbol("FBDev"), constructor);
@@ -87,7 +76,7 @@ Handle<Value> FBDev::Clear(const Arguments& args) {
 
     FBDev* obj = ObjectWrap::Unwrap<FBDev>(args.This());
 
-    int ret = ioctl(obj->fbfd,FBIO_EINK_SCREEN_CLEAR);
+    int ret = obj->fbioctl(FBIO_EINK_SCREEN_CLEAR);
 
     return scope.Close(Number::New(ret));
 }
@@ -97,7 +86,7 @@ Handle<Value> FBDev::Flush(const Arguments& args) {
 
     FBDev* obj = ObjectWrap::Unwrap<FBDev>(args.This());
 
-    int ret = ioctl(obj->fbfd,FBIO_EINK_UPDATE_DISPLAY, fx_update_full);
+    int ret = obj->fbioctl(FBIO_EINK_UPDATE_DISPLAY, fx_update_full);
 
     return scope.Close(Number::New(ret));
 }
@@ -107,21 +96,9 @@ Handle<Value> FBDev::Splash(const Arguments& args) {
 
     FBDev* obj = ObjectWrap::Unwrap<FBDev>(args.This());
     int val = args[0]->IsUndefined() ? 0 : args[0]->Int32Value();
-    int ret = ioctl(obj->fbfd,FBIO_EINK_SPLASH_SCREEN, val);
+    int ret = obj->fbioctl(FBIO_EINK_SPLASH_SCREEN, val);
 
     return scope.Close(Number::New(ret));
-}
-
-inline void FBDev::update_pixel(int x,int y,char pix){
-    assert( x >= 0 && y >= 0 && x < vinfo.xres && y< vinfo.yres);
-    int offset = y*vinfo.xres/2 + (x/2);
-    assert( offset < finfo.smem_len );
-    pix &= 0x0F;
-    if(x%2){
-        fbp[offset] = (fbp[offset] & 0xf0) | pix;
-    }else{
-        fbp[offset] = (fbp[offset] & 0x0f) | (pix << 4); 
-    }
 }
 
 Handle<Value> FBDev::Update(const Arguments& args) {
@@ -138,7 +115,8 @@ Handle<Value> FBDev::Update(const Arguments& args) {
     bufh = buf->Get(SYM("height"))->Uint32Value();
     bufpitch = buf->Get(SYM("pitch"))->Uint32Value();
 
-    if(bufx >= bufw || bufy >= bufh) return scope.Close(BooleanObject::New(false));
+    if(bufx >= bufw || bufy >= bufh)
+		return scope.Close(Boolean::New(false));
 
     Local<Object> pbuf = buf->Get(SYM("buffer"))->ToObject();
     char* bufptr = node::Buffer::Data(pbuf);
@@ -166,10 +144,11 @@ Handle<Value> FBDev::Update(const Arguments& args) {
         y = 0;
     }
 
-    if(w <=0 || h <=0 || x >= obj->vinfo.xres || y>=obj->vinfo.yres )return scope.Close(BooleanObject::New(false));
+    if(w <=0 || h <=0 || x >= obj->XRES || y>=obj->YRES )
+		return scope.Close(Boolean::New(false));
 
-    int x_max = min((uint32_t)x+w,obj->vinfo.xres),
-        y_max = min((uint32_t)y+h,obj->vinfo.yres);
+    int x_max = min((uint32_t)x+w,obj->XRES),
+        y_max = min((uint32_t)y+h,obj->YRES);
 
     printf("x=%d,y=%d,x_max=%d,y_max=%d\n",x,y,x_max,y_max);
 
@@ -192,10 +171,10 @@ Handle<Value> FBDev::Update(const Arguments& args) {
 		.buffer = NULL,
     };
 
-    int ret = ioctl(obj->fbfd,FBIO_EINK_UPDATE_DISPLAY_AREA, &ua);
+    int ret = obj->fbioctl(FBIO_EINK_UPDATE_DISPLAY_AREA, &ua);
 
     printf("fbupdate: %d\n",ret);
-    return scope.Close(BooleanObject::New(true));
+    return scope.Close(Boolean::New(true));
 }
 
 NODE_MODULE(fb,  FBDev::Init)

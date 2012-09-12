@@ -10,6 +10,9 @@
 #include <node.h>
 #include <node_buffer.h>
 
+#include "kanvas.h"
+#include "font.h"
+
 #define SYM(x) String::NewSymbol(x)
 #define FUNC(x) FunctionTemplate::New(x)->GetFunction()
 #define THROW(x) ThrowException(Exception::Error(String::New(x)))
@@ -17,39 +20,7 @@
 using namespace std;
 using namespace v8;
 
-class Kanvas : public node::ObjectWrap{
-public:
-    static void Init(Handle<Object> target);
-
-    static Handle<Value> New(const Arguments& args);
-    static Kanvas* New(const node::Buffer buf,int width,int rows,int pitch);
-    static Kanvas* New(int width,int rows);
-
-    static Handle<Value>   FillRect(const Arguments& args);
-    static Handle<Value> StrokeRect(const Arguments& args);
-//    static Handle<Value>   DrawText(const Arguments& args);
-    static Handle<Value>   DrawLine(const Arguments& args);
-
-    static Handle<Value> PropGetter(
-            Local<String> property,
-            const AccessorInfo &info);
-    static void PropSetter(Local<String> property, 
-            Local<Value> value,
-            const AccessorInfo& info);
-
-    Persistent<Object> buffer;
-    int  width,rows,pitch;
-    char color;
-
-    void   fillRect(int x ,int y ,int w ,int h );
-    void strokeRect(int x ,int y ,int w ,int h ,int width);
-    void   drawLine(int x1,int y1,int x2,int y2);
-//    void   drawText(int x ,int y ,int sz,string str);
-
-private:
-    void setPixel(int x, int y, char c);
-};
-
+#include "common.h"
 void Kanvas::Init(Handle<Object> target) {
     // Prepare constructor template
     Local<FunctionTemplate> tpl = FunctionTemplate::New(New);
@@ -61,16 +32,26 @@ void Kanvas::Init(Handle<Object> target) {
     BIND(fillRect  ,FillRect);
     BIND(strokeRect,StrokeRect);
     BIND(drawLine  ,DrawLine);
-//    BIND(drawText  ,DrawText);
+
+    BIND(drawString,DrawString);
+    BIND(sizeString,SizeString);
+    
+    BIND(getPixel  ,GetPixel);
+    BIND(setPixel  ,SetPixel);
 #undef BIND
 
-#define ATTR(name) tpl->InstanceTemplate()->SetAccessor(SYM(#name), PropGetter, PropSetter)
-    ATTR(width);
-    ATTR(height);
-    ATTR(buffer);
-    ATTR(pitch);
-    ATTR(color);
-#undef ATTR
+#define RWATTR(name) tpl->InstanceTemplate()->SetAccessor(SYM(#name), GetProp, SetProp)
+#define ROATTR(name) tpl->InstanceTemplate()->SetAccessor(SYM(#name), GetProp, RoSetProp )
+
+    ROATTR(width);
+    ROATTR(height);
+    ROATTR(buffer);
+    ROATTR(pitch);
+    RWATTR(color);
+    RWATTR(font);
+
+#undef ROATTR
+#undef RWATTR
 
     Persistent<Function> constructor = Persistent<Function>::New(tpl->GetFunction());
     target->Set(SYM("Kanvas"), constructor);
@@ -102,31 +83,103 @@ Kanvas* Kanvas::New(int width,int rows){
     return ret;
 }
 
-static string ObjectToString(Local<Value> value) {
-  String::Utf8Value utf8_value(value);
-  return string(*utf8_value);
-}
-
-Handle<Value> Kanvas::PropGetter(Local<String> name,const AccessorInfo &info) {
+Handle<Value> Kanvas::GetProp(Local<String> name,const AccessorInfo &info) {
     string key = ObjectToString(name);
     Kanvas* obj = ObjectWrap::Unwrap<Kanvas>(info.Holder());
 
-    if(key=="buffer")return obj->buffer;
-    else if(key=="width")return Integer::New(obj->width);
-    else if(key=="height")return Integer::New(obj->rows);
-    else if(key=="pitch")return Integer::New(obj->pitch);
-    else if(key=="color")return Integer::New(obj->color);
+#define ATTR(name,val) if(key==#name) return val ; else
+#define SATTR(name,val) ATTR(name, String::New(obj->val))
+#define IATTR(name,val) ATTR(name, Integer::New(obj->val))
+
+	ATTR(buffer,obj->buffer)
+	ATTR(font,obj->font)
+	IATTR(width,width)
+	IATTR(height,rows)
+	IATTR(pitch,pitch)
+	IATTR(color,color)
+
+#undef IATTR
+#undef SATTR
+#undef ATTR
 
     return Handle<Value>();
 }
 
-void Kanvas::PropSetter(Local<String> name, Local<Value> value, const AccessorInfo& info){
+void Kanvas::SetProp(Local<String> name, Local<Value> value, const AccessorInfo& info){
     string key = ObjectToString(name);
     Kanvas* obj = ObjectWrap::Unwrap<Kanvas>(info.Holder());
 
+	//printf("update prop %s = %s\n",key.c_str(),ObjectToString(value->ToDetailString()).c_str());
     if(key=="color"){
         obj->color = (char)value->Uint32Value();
+    }else if(key=="font"){
+		Font* f = ObjectWrap::Unwrap<Font>(value->ToObject());
+		assert(f != NULL);
+		obj->font = f->handle_;
+	}
+}
+
+Handle<Value> Kanvas::GetPixel(const Arguments& args) {
+    HandleScope scope;
+    Kanvas* obj = ObjectWrap::Unwrap<Kanvas>(args.This());
+    
+    int x=0,y=0;
+    if(args.Length()>=2){
+        x = args[0]->Uint32Value();
+        y = args[1]->Uint32Value();
+    }else{
+        return THROW("bad arguments count");
     }
+
+    char ret;
+    if(obj->getPixel(x,y,&ret)){
+        return scope.Close(Integer::New(ret));
+    }
+
+    return scope.Close(Handle<Value>());
+}
+
+Handle<Value> Kanvas::SetPixel(const Arguments& args) {
+    HandleScope scope;
+    Kanvas* obj = ObjectWrap::Unwrap<Kanvas>(args.This());
+    
+    int x=0,y=0;
+    char c;
+    if(args.Length()>=3){
+        x = args[0]->Uint32Value();
+        y = args[1]->Uint32Value();
+        c = (char)args[2]->Uint32Value();
+    }else{
+        return THROW("bad arguments count");
+    }
+
+    bool ret = obj->setPixel(x,y,c);
+
+    return scope.Close(Boolean::New(ret));
+}
+
+
+
+bool Kanvas::getPixel(int x,int y, char* color){
+    if(x<0 || y<0 || x>=width || y>=rows) return false;
+    //printf("getPix x=%d,y=%d,c=%d\n",x,y,color);
+    char* buf = node::Buffer::Data(buffer);
+    int buflen = node::Buffer::Length(buffer);
+    int offset = y*pitch+x;
+    assert(offset<buflen);
+    *color = buf[offset];
+    return true;
+}
+
+bool Kanvas::setPixel(int x,int y,char color){
+    if(x<0 || y<0 || x>=width || y>=rows) return false;
+    //printf("setPix x=%d,y=%d,c=%d\n",x,y,color);
+    char* buf = node::Buffer::Data(buffer);
+    int buflen = node::Buffer::Length(buffer);
+    int offset = y*pitch+x;
+    assert(offset<buflen);
+    buf[offset]=color;
+    return true;
 }
 
 Handle<Value> Kanvas::FillRect(const Arguments& args) {
@@ -158,13 +211,14 @@ void Kanvas::fillRect(int x,int y,int w,int h){
     if(x>=width || y>=rows)return;
     printf("fill x=%d,y=%d,w=%d,h=%d,c=%d,width=%d,rows=%d\n",x,y,w,h,color,width,rows);
     if((x==0)&&(y==0)&&(w>=width)&&(h>=rows)){
-        printf("buf=%p,len=%d\n",buf,buflen);
+        //printf("buf=%p,len=%d\n",buf,buflen);
         memset(buf,color,buflen);
         return;
     }
     int endx = min(x+w,width);
     int endy = min(y+h,rows);
-    assert((endy-1)*pitch+endx < buflen);
+    //printf("endx=%d,endy=%d,pitch=%d,buflen=%d\n",endx,endy,pitch,buflen);
+    assert((endy-1)*pitch+endx-1 < buflen);
     for(;y<endy;y++){
         memset(buf+(y*pitch+x),color,endx-x);
     }
@@ -221,19 +275,19 @@ Handle<Value> Kanvas::DrawLine(const Arguments& args) {
     return scope.Close(Handle<Value>());
 }
 
-void Kanvas::setPixel(int x,int y,char color){
-    if(x<0 || y<0 || x>=width || y>=rows) return;
-    printf("setPix x=%d,y=%d,c=%d\n",x,y,color);
-    char* buf = node::Buffer::Data(buffer);
-    int buflen = node::Buffer::Length(buffer);
-    int offset = y*pitch+x;
-    assert(offset<buflen);
-    buf[offset]=color;
-}
-
 //Bresenham algorithm
 #define abs(x) ((x)>=0?(x):-(x))
 void Kanvas::drawLine(int x1,int y1,int x2,int y2){
+    char* buf = node::Buffer::Data(buffer);
+    int buflen = node::Buffer::Length(buffer);
+
+#define _setPixel(_x,_y,_c) \
+do{\
+    int offset = (_y)*pitch+(_x); \
+    if(offset<buflen) \
+        buf[offset]=(_c); \
+}while(0)
+
     int dx = x2 - x1;
     int dy = y2 - y1;
     int ux = ((dx > 0) << 1) - 1;
@@ -241,10 +295,10 @@ void Kanvas::drawLine(int x1,int y1,int x2,int y2){
     int x = x1, y = y1, eps;
 
     eps = 0;dx = abs(dx); dy = abs(dy);
-    printf("dx=%d,dy=%d,ux=%x,uy=%d \n",dx,dy,ux,uy); 
+    printf("drawLine dx=%d,dy=%d,ux=%x,uy=%d \n",dx,dy,ux,uy); 
     if (dx > dy) {
         for (x = x1; x != x2+1; x += ux){
-            setPixel(x, y, color);
+            _setPixel(x, y, color);
             eps += dy;
             if ((eps << 1) >= dx){
                 y += uy; eps -= dx;
@@ -252,13 +306,14 @@ void Kanvas::drawLine(int x1,int y1,int x2,int y2){
         }
     }else{
         for (y = y1; y != y2+1; y += uy){
-            setPixel(x, y, color);
+            _setPixel(x, y, color);
             eps += dx;
             if ((eps << 1) >= dy){
                 x += ux; eps -= dy;
             }
         }
     }
+#undef _setPixel
 }
 
 //Wu's line algorithm
@@ -310,5 +365,46 @@ void Kanvas::drawLine(int x1,int y1,int x2,int y2,float width){
     }
 }
 */
+
+Handle<Value> Kanvas::DrawString(const Arguments& args) {
+    HandleScope scope;
+
+    Kanvas* obj = ObjectWrap::Unwrap<Kanvas>(args.This());
+
+	string str = ObjectToString(args[0]);
+	int x=0,y=0;
+	x = args[1]->Int32Value();
+    y = args[2]->Int32Value();
+
+	obj->drawString(str,x,y);
+    return scope.Close(Handle<Value>());
+}
+
+
+void Kanvas::drawString(string str,int x,int y){
+    Font* f = ObjectWrap::Unwrap<Font>(font);
+	assert(f != NULL);
+	f->drawString(this,str,x,y);	
+}
+
+Handle<Value> Kanvas::SizeString(const Arguments& args) {
+    HandleScope scope;
+
+    Kanvas* obj = ObjectWrap::Unwrap<Kanvas>(args.This());
+
+	string str = ObjectToString(args[0]);
+	int w,h;
+	obj->sizeString(str,&w,&h);
+
+    return scope.Close(Integer::New(w));
+}
+
+void Kanvas::sizeString(string str,int* width,int* height){
+	Font* f = ObjectWrap::Unwrap<Font>(font);
+	assert(f != NULL);
+	int ret = f->sizeString(str,height);
+	if(width)*width=ret;
+}
+
 NODE_MODULE(kanvas,Kanvas::Init)
 
