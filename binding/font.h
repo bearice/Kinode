@@ -33,7 +33,7 @@ public:
     std::string filename;
     FT_Face face;
     FT_Error error;
-	int size; //in pixel
+	uint16_t size; //in pixel
 
 	int sizeString(std::string str,int* height = NULL);
 

@@ -1,18 +1,20 @@
 COFFEE=coffee
+OUT_DIR=build
 
-TARGETS=$(patsubst %.coffee,%.js,$(wildcard *.coffee))
+TARGETS=$(patsubst lib/%.coffee,$(OUT_DIR)/%.js,$(wildcard lib/*.coffee))
 
-%.js: %.coffee
-	$(COFFEE) -c "$<"
+$(OUT_DIR)/%.js: lib/%.coffee
+	$(COFFEE) -o $(OUT_DIR) -c "$<"
 
-all: $(TARGETS)
+all: $(TARGETS) $(OUT_DIR)
 	make -C binding
 
-clean: 
-	rm -rf $(TARGETS)
-	make -C binding clean
+$(OUT_DIR):
+	-mkdir -p $(OUT_DIR)
 
-rsync: all
-	rsync -rv --exclude=.git --exclude=.DS_Store . k3usb:/mnt/us/kinode
+clean: 
+	make -C binding clean
+	rm -rf $(OUT_DIR)
+
 
 

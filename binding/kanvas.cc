@@ -78,9 +78,23 @@ Kanvas* Kanvas::New(int width,int rows){
     ret->width = width;
     ret->rows = rows;
     ret->pitch = pitch;
-    ret->buffer = buf->handle_;
-
+    ret->buffer = Persistent<Object>::New(buf->handle_);
+    ret->reloadBuffer();
+  
     return ret;
+}
+
+bool Kanvas::reloadBuffer(){
+    assert(!buffer.IsEmpty());
+    assert(node::Buffer::HasInstance(buffer));
+    buf = node::Buffer::Data(buffer);
+    buflen = node::Buffer::Length(buffer);
+    if(!buf){
+        string wtf = ObjectToString(buffer->ToString());
+        printf("WTF? %s\n",wtf.c_str());
+        return false;
+    }
+    return true;
 }
 
 Handle<Value> Kanvas::GetProp(Local<String> name,const AccessorInfo &info) {
@@ -115,7 +129,7 @@ void Kanvas::SetProp(Local<String> name, Local<Value> value, const AccessorInfo&
     }else if(key=="font"){
 		Font* f = ObjectWrap::Unwrap<Font>(value->ToObject());
 		assert(f != NULL);
-		obj->font = f->handle_;
+		obj->font = Persistent<Object>::New( f->handle_ );
 	}
 }
 
@@ -131,6 +145,7 @@ Handle<Value> Kanvas::GetPixel(const Arguments& args) {
         return THROW("bad arguments count");
     }
 
+    obj->reloadBuffer();
     char ret;
     if(obj->getPixel(x,y,&ret)){
         return scope.Close(Integer::New(ret));
@@ -153,33 +168,10 @@ Handle<Value> Kanvas::SetPixel(const Arguments& args) {
         return THROW("bad arguments count");
     }
 
+    obj->reloadBuffer();
     bool ret = obj->setPixel(x,y,c);
 
     return scope.Close(Boolean::New(ret));
-}
-
-
-
-bool Kanvas::getPixel(int x,int y, char* color){
-    if(x<0 || y<0 || x>=width || y>=rows) return false;
-    //printf("getPix x=%d,y=%d,c=%d\n",x,y,color);
-    char* buf = node::Buffer::Data(buffer);
-    int buflen = node::Buffer::Length(buffer);
-    int offset = y*pitch+x;
-    assert(offset<buflen);
-    *color = buf[offset];
-    return true;
-}
-
-bool Kanvas::setPixel(int x,int y,char color){
-    if(x<0 || y<0 || x>=width || y>=rows) return false;
-    //printf("setPix x=%d,y=%d,c=%d\n",x,y,color);
-    char* buf = node::Buffer::Data(buffer);
-    int buflen = node::Buffer::Length(buffer);
-    int offset = y*pitch+x;
-    assert(offset<buflen);
-    buf[offset]=color;
-    return true;
 }
 
 Handle<Value> Kanvas::FillRect(const Arguments& args) {
@@ -197,23 +189,21 @@ Handle<Value> Kanvas::FillRect(const Arguments& args) {
         return THROW("bad arguments count");
     }
 
+    obj->reloadBuffer();
     obj->fillRect(x,y,w,h);
 
     return scope.Close(Handle<Value>());
 }
 
-void Kanvas::fillRect(int x,int y,int w,int h){
-    char* buf    = node::Buffer::Data(buffer);
-    int   buflen = node::Buffer::Length(buffer);
+bool Kanvas::fillRect(int x,int y,int w,int h){
 
-    if(x<0)x=0;
     if(y<0)y=0;
-    if(x>=width || y>=rows)return;
-    printf("fill x=%d,y=%d,w=%d,h=%d,c=%d,width=%d,rows=%d\n",x,y,w,h,color,width,rows);
+    if(x>=width || y>=rows)return false;
+    //printf("fill x=%d,y=%d,w=%d,h=%d,c=%d,width=%d,rows=%d\n",x,y,w,h,color,width,rows);
     if((x==0)&&(y==0)&&(w>=width)&&(h>=rows)){
         //printf("buf=%p,len=%d\n",buf,buflen);
         memset(buf,color,buflen);
-        return;
+        return true;
     }
     int endx = min(x+w,width);
     int endy = min(y+h,rows);
@@ -222,6 +212,7 @@ void Kanvas::fillRect(int x,int y,int w,int h){
     for(;y<endy;y++){
         memset(buf+(y*pitch+x),color,endx-x);
     }
+    return true;
 }
 
 Handle<Value> Kanvas::StrokeRect(const Arguments& args){
@@ -242,6 +233,7 @@ Handle<Value> Kanvas::StrokeRect(const Arguments& args){
         return THROW("bad arguments count");
     }
 
+    obj->reloadBuffer();
     obj->strokeRect(x,y,w,h,W);
 
     return scope.Close(Handle<Value>());
@@ -270,6 +262,7 @@ Handle<Value> Kanvas::DrawLine(const Arguments& args) {
         return THROW("bad arguments count");
     }
 
+    obj->reloadBuffer();
     obj->drawLine(x1,y1,x2,y2);
 
     return scope.Close(Handle<Value>());
@@ -278,8 +271,6 @@ Handle<Value> Kanvas::DrawLine(const Arguments& args) {
 //Bresenham algorithm
 #define abs(x) ((x)>=0?(x):-(x))
 void Kanvas::drawLine(int x1,int y1,int x2,int y2){
-    char* buf = node::Buffer::Data(buffer);
-    int buflen = node::Buffer::Length(buffer);
 
 #define _setPixel(_x,_y,_c) \
 do{\
@@ -376,6 +367,7 @@ Handle<Value> Kanvas::DrawString(const Arguments& args) {
 	x = args[1]->Int32Value();
     y = args[2]->Int32Value();
 
+    obj->reloadBuffer();
 	obj->drawString(str,x,y);
     return scope.Close(Handle<Value>());
 }

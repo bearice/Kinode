@@ -128,7 +128,11 @@ void Font::SetProp(Local<String> name, Local<Value> value, const AccessorInfo& i
     Font* obj = ObjectWrap::Unwrap<Font>(info.Holder());
 
     if(key=="size"){
-        obj->size = value->Uint32Value();
+        obj->size = (uint16_t)value->Uint32Value();
+        if(obj->size==0){
+            THROW("font size must > 0");
+            return;
+        }
         CHK_FT_ERROR(FT_Set_Pixel_Sizes(obj->face,obj->size,0),
             return
         );
@@ -197,6 +201,9 @@ static void Raster_Callback(
             bool ret = p->kanvas->setPixel(X,Y,(span->coverage * p->kanvas->color) >> 8);
             if(!ret)return;
         }
+        
+        //X = p->x + span->x;
+        //p->kanvas->fillRect(X,Y,span->len,1);
     }
 }
 
@@ -239,10 +246,6 @@ int Font::drawChar(Kanvas* kanvas,FT_ULong chr,int &x,int &y){
 
 int Font::drawString(Kanvas* kanvas,string str,int &x,int &y){
     size_t idx=0;
-    for(int i=0;i<str.length();i++){
-        printf("%02x ",str[i]);
-    }
-    printf("\n");
     FT_ULong chr;
     while((chr=decodeUTF8(str,idx)) != -1){
         drawChar(kanvas,chr,x,y);

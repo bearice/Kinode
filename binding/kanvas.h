@@ -29,18 +29,36 @@ public:
     int  width,rows,pitch,perpend;
     char color;
 
-    void   fillRect(int x ,int y ,int w ,int h );
+    char* buf;
+    size_t buflen;
+
+    bool   fillRect(int x ,int y ,int w ,int h );
     void strokeRect(int x ,int y ,int w ,int h ,int width);
     void   drawLine(int x1,int y1,int x2,int y2);
     void drawString(std::string str, int x ,int y);
     void sizeString(std::string str, int* width, int* height);
 
-    bool getPixel(int x, int y, char* c);
-    bool setPixel(int x, int y, char c);
+    inline bool getPixel(int x, int y, char* color){
+        if(x<0 || y<0 || x>=width || y>=rows) return false;
+        int o = offset(x,y);
+        assert(o<buflen);
+        *color = buf[o];
+        return true;
+    }
+
+    inline bool setPixel(int x,int y,char color){
+        if(x<0 || y<0 || x>=width || y>=rows) return false;
+        int o = offset(x,y);
+        assert(o<buflen);
+        buf[o]=color;
+        return true;
+    }
 
 	inline int offset(int x,int y){
 		return y*pitch+x;
 	};
+
+    bool reloadBuffer();
 };
 
 #endif

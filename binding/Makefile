@@ -11,26 +11,32 @@ CXXFLAGS=-c -pipe $(NODE_INCLUDES) $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pk
 LDFLAGS=-shared -g3
 LIBS=-static-libstdc++ -Wl,-static $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --libs freetype2) -Wl,-Bdynamic
 
-OBJECTS=$(patsubst %.cc,%.obj,$(wildcard *.cc))
-TARGET=binding.node index.js
+OBJECTS=$(patsubst %.cc,$(OUT_DIR)/%.obj,$(wildcard *.cc))
+TARGET=$(OUT_DIR)/binding.node $(OUT_DIR)/index.js
 
 NODE_INCLUDES=-I$(NODE)/src -I$(NODE)/deps/v8/include -I$(NODE)/deps/uv/include
 
+OUT_DIR=../build/binding
+
 HEADERS=$(wildcard *.h)
 
-all: $(TARGET)
+all: $(OUT_DIR) $(TARGET)
 
-%.obj: %.cc $(HEADERS)
+$(OUT_DIR)/%.obj: %.cc $(HEADERS) 
 	$(CXX) $(CXXFLAGS) -o "$@" "$<"
 
-binding.node: $(OBJECTS)
+$(OUT_DIR)/binding.node: $(OBJECTS)
 	$(LD) $(LDFLAGS) -o "$@" $(OBJECTS) $(LIBS) 
 
-%.js: %.coffee
-	coffee -c "$<"
+$(OUT_DIR)/%.js: %.coffee
+	coffee -o $(OUT_DIR) -c "$<"
+
+$(OUT_DIR):
+	mkdir -p $(OUT_DIR)
 
 clean:
-	rm -rf $(TARGET) 
+	rm -rf $(TARGET) $(OBJECTS)
+	rm -rf $(OUT_DIR)
 
 .PHONY: all clean 
 
