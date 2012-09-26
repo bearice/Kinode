@@ -16,7 +16,7 @@ TARGET=$(OUT_DIR)/binding.node $(OUT_DIR)/index.js
 
 NODE_INCLUDES=-I$(NODE)/src -I$(NODE)/deps/v8/include -I$(NODE)/deps/uv/include
 
-OUT_DIR=../build/binding
+OUT_DIR=../build/node_modules/binding
 
 HEADERS=$(wildcard *.h)
 
@@ -25,7 +25,7 @@ all: $(OUT_DIR) $(TARGET)
 $(OUT_DIR)/%.obj: %.cc $(HEADERS) 
 	$(CXX) $(CXXFLAGS) -o "$@" "$<"
 
-$(OUT_DIR)/binding.node: $(OBJECTS)
+$(OUT_DIR)/%.node: $(OBJECTS)
 	$(LD) $(LDFLAGS) -o "$@" $(OBJECTS) $(LIBS) 
 
 $(OUT_DIR)/%.js: %.coffee

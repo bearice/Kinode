@@ -1,19 +1,24 @@
 COFFEE=coffee
 OUT_DIR=build
 
-TARGETS=$(patsubst lib/%.coffee,$(OUT_DIR)/%.js,$(wildcard lib/*.coffee))
+SUBDIRS=binding lib example
 
-$(OUT_DIR)/%.js: lib/%.coffee
-	$(COFFEE) -o $(OUT_DIR) -c "$<"
+TARGETS=$(addprefix $(OUT_DIR)/,$(SUBDIRS))
+CLAEN_TARGETS=$(addprefix clean_$(OUT_DIR)/,$(SUBDIRS))
 
+	
 all: $(TARGETS) $(OUT_DIR)
-	make -C binding
+
+$(OUT_DIR)/%: %
+	make -C $<
+
+clean_$(OUT_DIR)/%: %
+	make -C $< clean
 
 $(OUT_DIR):
 	-mkdir -p $(OUT_DIR)
 
-clean: 
-	make -C binding clean
+clean: $(CLAEN_TARGETS)
 	rm -rf $(OUT_DIR)
 
 

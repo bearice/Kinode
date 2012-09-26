@@ -1,5 +1,5 @@
-input = require './input'
-binding = require './binding'
+input = require 'input'
+binding = require 'binding'
 
 fb = new binding.FBDev()
 fb.clear()
