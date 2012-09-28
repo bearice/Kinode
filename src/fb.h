@@ -19,12 +19,19 @@ private:
     static v8::Handle<v8::Value> Splash(const v8::Arguments& args);
     static v8::Handle<v8::Value> Update(const v8::Arguments& args);
 
+       
+    static v8::Handle<v8::Value> GetProp(v8::Local<v8::String> property, 
+			const v8::AccessorInfo &info);
+    static void SetProp(v8::Local<v8::String> property, 
+			v8::Local<v8::Value> value, const v8::AccessorInfo& info);
+
+ 
     char*  fbp;
     int    fbfd;
     struct fb_var_screeninfo *vinfo;
     struct fb_fix_screeninfo *finfo;
 
-	fx_type update_mode;
+	fx_type update_fx;
 
 #define SHMLEN finfo->smem_len
 #define XRES vinfo->xres
@@ -33,8 +40,8 @@ private:
 		assert( x >= 0 && y >= 0 && x < XRES && y< YRES);
 		int offset = XRES * y/2 + (x/2);
 		assert( offset < SHMLEN );
-		pix &= 0x0F;
-		//pix >>= 4;
+		//pix &= 0x0F;
+		pix >>= 4;
 		if(x%2){
 			fbp[offset] = (fbp[offset] & 0xf0) | pix;
 		}else{

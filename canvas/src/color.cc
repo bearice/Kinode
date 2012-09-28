@@ -395,6 +395,20 @@ rgba_from_name_string(const char *str, short *ok) {
 }
 
 /*
+ * Return r=0 g=0 b=0 a=x from:
+ *  
+ *  - "@0xAA"
+ *  - "@Adec"
+ *
+ */
+
+static int32_t
+a8_from_string(const char *str, short *ok) {
+  int32_t ret = (h(str[0]) << 4) | h(str[1]) ;
+  return *ok=1,ret;
+}
+
+/*
  * Return rgb from:
  *  
  *  - #RGB
@@ -407,6 +421,8 @@ rgba_from_name_string(const char *str, short *ok) {
 
 int32_t
 rgba_from_string(const char *str, short *ok) {
+  if ('@' == str[0]) 
+    return a8_from_string(++str, ok);
   if ('#' == str[0]) 
     return rgba_from_hex_string(++str, ok);
   if (str == strstr(str, "rgba"))

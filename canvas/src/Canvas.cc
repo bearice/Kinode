@@ -42,6 +42,9 @@ Canvas::Initialize(Handle<Object> target) {
   NODE_SET_PROTOTYPE_METHOD(constructor, "streamJPEGSync", StreamJPEGSync);
 #endif
   proto->SetAccessor(String::NewSymbol("type"), GetType);
+  proto->SetAccessor(String::NewSymbol("buffer"), GetBuffer);
+  proto->SetAccessor(String::NewSymbol("pitch") , GetStride);
+  proto->SetAccessor(String::NewSymbol("stride") , GetStride);
   proto->SetAccessor(String::NewSymbol("width"), GetWidth, SetWidth);
   proto->SetAccessor(String::NewSymbol("height"), GetHeight, SetHeight);
   target->Set(String::NewSymbol("Canvas"), constructor->GetFunction());
@@ -76,6 +79,31 @@ Canvas::GetType(Local<String> prop, const AccessorInfo &info) {
   Canvas *canvas = ObjectWrap::Unwrap<Canvas>(info.This());
   return scope.Close(String::New(canvas->isPDF() ? "pdf" : "image"));
 }
+
+/*
+ * Get surface buffer.
+ */
+
+Handle<Value>
+Canvas::GetBuffer(Local<String> prop, const AccessorInfo &info) {
+  HandleScope scope;
+  Canvas *canvas = ObjectWrap::Unwrap<Canvas>(info.This());
+  cairo_surface_flush(canvas->_surface);
+
+  return scope.Close(canvas->_surface_buffer);
+}
+
+/*
+ * Get stride.
+ */
+
+Handle<Value>
+Canvas::GetStride(Local<String> prop, const AccessorInfo &info) {
+  HandleScope scope;
+  Canvas *canvas = ObjectWrap::Unwrap<Canvas>(info.This());
+  return scope.Close(Integer::New(canvas->stride()));
+}
+
 
 /*
  * Get width.
@@ -375,6 +403,8 @@ Canvas::StreamJPEGSync(const Arguments &args) {
 
 #endif
 
+static void do_nothing(char *data, void *hint){}
+
 /*
  * Initialize cairo surface.
  */
@@ -393,9 +423,14 @@ Canvas::Canvas(int w, int h, canvas_type_t t): ObjectWrap() {
     assert(status == CAIRO_STATUS_SUCCESS);
     _surface = cairo_pdf_surface_create_for_stream(toBuffer, _closure, w, h);
   } else {
-    _surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+    _surface = cairo_image_surface_create(CAIRO_FORMAT_A8, w, h);
     assert(_surface);
-    V8::AdjustAmountOfExternalAllocatedMemory(4 * w * h);
+    V8::AdjustAmountOfExternalAllocatedMemory(w * h);
+
+	char* bufptr = (char*)data();
+	int   buflen = height * stride();
+	node::Buffer* buf = node::Buffer::New(bufptr,buflen,do_nothing,NULL);
+	_surface_buffer = Persistent<Object>::New(buf->handle_);
   }
 }
 
@@ -431,8 +466,13 @@ Canvas::resurface(Handle<Object> canvas) {
       int old_width = cairo_image_surface_get_width(_surface);
       int old_height = cairo_image_surface_get_height(_surface);
       cairo_surface_destroy(_surface);
-      _surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
-      V8::AdjustAmountOfExternalAllocatedMemory(4 * (width * height - old_width * old_height));
+      _surface = cairo_image_surface_create(CAIRO_FORMAT_A8, width, height);
+      V8::AdjustAmountOfExternalAllocatedMemory((width * height - old_width * old_height));
+
+	  char* bufptr = (char*)data();
+	  int   buflen = height * stride();
+	  node::Buffer* buf = node::Buffer::New(bufptr,buflen,do_nothing,NULL);
+	  _surface_buffer = Persistent<Object>::New(buf->handle_);
 
       // Reset context
       Handle<Value> context = canvas->Get(String::New("context"));

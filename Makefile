@@ -19,7 +19,6 @@ $(OUT_DIR):
 	-mkdir -p $(OUT_DIR)
 
 clean: $(CLAEN_TARGETS)
-	rm -rf $(OUT_DIR)
 
 
 

@@ -33,7 +33,7 @@ FBDev::FBDev(){
 	fbioctl(FBIOGET_FSCREENINFO, finfo);
     fbioctl(FBIOGET_VSCREENINFO, vinfo);
     fbp = (char*)mmap(0, SHMLEN, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, 0);
-	update_mode = fx_update_partial;
+	update_fx = fx_update_partial;
 }
 
 FBDev::~FBDev(){
@@ -50,15 +50,59 @@ void FBDev::Init(Handle<Object> target) {
     tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
     // Prototype
-#define BIND(name,func) tpl->PrototypeTemplate()->Set(SYM(#name),FUNC(func));    
+#define BIND(name,func) tpl->PrototypeTemplate()->Set(SYM(#name),FUNC(func))
     BIND(clear,Clear);
     BIND(flush,Flush);
     BIND(splash,Splash);
     BIND(update,Update);
 #undef BIND
 
+#define ICONSTANT(name) tpl->PrototypeTemplate()->Set(SYM(#name),Integer::NewFromUnsigned(name))
+	ICONSTANT(fx_flash);
+	ICONSTANT(fx_invert);
+	ICONSTANT(fx_update_partial);
+	ICONSTANT(fx_update_full);
+	ICONSTANT(fx_update_fast);
+	ICONSTANT(fx_update_slow);
+#undef ICONSTANT
+
+#define RWATTR(name) tpl->InstanceTemplate()->SetAccessor(SYM(#name), GetProp, SetProp)
+#define ROATTR(name) tpl->InstanceTemplate()->SetAccessor(SYM(#name), GetProp, RoSetProp )
+
+	RWATTR(update_fx);
+
+#undef ROATTR
+#undef RWATTR
+
     Persistent<Function> constructor = Persistent<Function>::New(tpl->GetFunction());
     target->Set(String::NewSymbol("FBDev"), constructor);
+}
+
+Handle<Value> FBDev::GetProp(Local<String> name,const AccessorInfo &info) {
+    string key = ObjectToString(name);
+    FBDev* obj = ObjectWrap::Unwrap<FBDev>(info.Holder());
+
+#define ATTR(name,val) if(key==#name) return val ; else
+#define SATTR(name,val) ATTR(name, String::New(obj->val))
+#define IATTR(name,val) ATTR(name, Integer::New(obj->val))
+
+	IATTR(update_fx,update_fx)
+
+#undef IATTR
+#undef SATTR
+#undef ATTR
+
+    return Handle<Value>();
+}
+
+void FBDev::SetProp(Local<String> name, Local<Value> value, const AccessorInfo& info){
+    string key = ObjectToString(name);
+    FBDev* obj = ObjectWrap::Unwrap<FBDev>(info.Holder());
+
+	//printf("update prop %s = %s\n",key.c_str(),ObjectToString(value->ToDetailString()).c_str());
+    if(key=="update_fx"){
+        obj->update_fx = (fx_type)value->Uint32Value();
+    }
 }
 
 Handle<Value> FBDev::New(const Arguments& args) {
@@ -118,6 +162,11 @@ Handle<Value> FBDev::Update(const Arguments& args) {
 		return scope.Close(Boolean::New(false));
 
     Local<Object> pbuf = buf->Get(SYM("buffer"))->ToObject();
+	if(!node::Buffer::HasInstance(pbuf)){
+		THROW("buffer is not a Buffer");
+		return scope.Close(False());
+	}
+
     char* bufptr = node::Buffer::Data(pbuf);
     size_t buflen = node::Buffer::Length(pbuf);
 
@@ -166,7 +215,7 @@ Handle<Value> FBDev::Update(const Arguments& args) {
 		.y1 = y,
 		.x2 = x_max,
 		.y2 = y_max,
-		.which_fx = obj->update_mode,
+		.which_fx = obj->update_fx,
 		.buffer = NULL,
     };
 

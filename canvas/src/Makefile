@@ -9,7 +9,11 @@ LD=$(HOST)-g++
 
 CXXFLAGS=-c -pipe $(NODE_INCLUDES) $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --cflags freetype2) -g3 
 LDFLAGS=-shared -g3
-LIBS=-static-libstdc++ -Wl,-static $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --libs freetype2) -lcairo -ljpeg -lgif -Wl,-Bdynamic
+LIBS=-static-libstdc++ \
+	 $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --libs freetype2) \
+	 -lcairo -lpixman-1 -lfontconfig\
+	 -lz -lpng -ljpeg -lgif \
+	 -Wl,-Bdynamic
 
 OBJECTS=$(patsubst %.cc,$(OUT_DIR)/%.obj,$(wildcard *.cc))
 TARGET=$(OUT_DIR)/bindings.node 

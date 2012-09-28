@@ -54,6 +54,9 @@ class Canvas: public node::ObjectWrap {
     static Handle<Value> New(const Arguments &args);
     static Handle<Value> ToBuffer(const Arguments &args);
     static Handle<Value> GetType(Local<String> prop, const AccessorInfo &info);
+    static Handle<Value> GetBuffer(Local<String> prop, const AccessorInfo &info);
+    static Handle<Value> GetStride(Local<String> prop, const AccessorInfo &info);
+
     static Handle<Value> GetWidth(Local<String> prop, const AccessorInfo &info);
     static Handle<Value> GetHeight(Local<String> prop, const AccessorInfo &info);
     static void SetWidth(Local<String> prop, Local<Value> val, const AccessorInfo &info);
@@ -87,6 +90,7 @@ class Canvas: public node::ObjectWrap {
     ~Canvas();
     cairo_surface_t *_surface;
     void *_closure;
+	v8::Persistent<v8::Object> _surface_buffer;
 };
 
 #endif
