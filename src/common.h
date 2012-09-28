@@ -1,6 +1,10 @@
 #ifndef _COMMON_H
 #define _COMMON_H
 
+#define SYM(x) String::NewSymbol(x)
+#define FUNC(x) FunctionTemplate::New(x)->GetFunction()
+#define THROW(x) ThrowException(Exception::Error(String::New(x)))
+
 static inline string ObjectToString(Local<Value> value) {
     String::Utf8Value utf8_value(value);
     return string(*utf8_value);
@@ -10,10 +14,10 @@ static void RoSetProp(Local<String> name, Local<Value> value, const AccessorInfo
     THROW("updating read-only property");
 }
 
-static inline FT_ULong decodeUTF8(string cp,size_t &idx){
+static inline uint32_t decodeUTF8(string cp,size_t &idx){
     unsigned char c = cp[idx];
     int len = cp.length() - idx;
-    FT_ULong ret = -1;
+    uint32_t ret = -1;
     if(c<0x80 && len >= 1) {
         ret = c;
         idx++; 

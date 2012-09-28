@@ -1,18 +1,18 @@
 COFFEE=coffee
 OUT_DIR=build
 
-SUBDIRS=binding lib example
+SUBDIRS=src lib canvas example
 
-TARGETS=$(addprefix $(OUT_DIR)/,$(SUBDIRS))
-CLAEN_TARGETS=$(addprefix clean_$(OUT_DIR)/,$(SUBDIRS))
+TARGETS=$(addprefix build_,$(SUBDIRS))
+CLAEN_TARGETS=$(addprefix clean_,$(SUBDIRS))
 
 	
 all: $(TARGETS) $(OUT_DIR)
 
-$(OUT_DIR)/%: %
+build_%: %
 	make -C $<
 
-clean_$(OUT_DIR)/%: %
+clean_%: %
 	make -C $< clean
 
 $(OUT_DIR):

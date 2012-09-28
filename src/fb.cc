@@ -1,11 +1,12 @@
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
-#include <math.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <linux/fb.h>
+
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <linux/fb.h>
 #include <linux/einkfb.h>
 
 #include <string>
@@ -19,6 +20,7 @@
 
 using namespace std;
 using namespace v8;
+#include "common.h"
 
 #define SHMLEN finfo->smem_len
 #define XRES vinfo->xres
@@ -31,6 +33,7 @@ FBDev::FBDev(){
 	fbioctl(FBIOGET_FSCREENINFO, finfo);
     fbioctl(FBIOGET_VSCREENINFO, vinfo);
     fbp = (char*)mmap(0, SHMLEN, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, 0);
+	update_mode = fx_update_partial;
 }
 
 FBDev::~FBDev(){
@@ -39,10 +42,6 @@ FBDev::~FBDev(){
     if(fbp)munmap(fbp,SHMLEN);
     if(fbfd)close(fbfd);
 }
-
-
-#define SYM(x)  String::NewSymbol(x)
-#define FUNC(x) FunctionTemplate::New(x)->GetFunction()
 
 void FBDev::Init(Handle<Object> target) {
     // Prepare constructor template
@@ -167,7 +166,7 @@ Handle<Value> FBDev::Update(const Arguments& args) {
 		.y1 = y,
 		.x2 = x_max,
 		.y2 = y_max,
-		.which_fx = fx_update_partial,
+		.which_fx = obj->update_mode,
 		.buffer = NULL,
     };
 

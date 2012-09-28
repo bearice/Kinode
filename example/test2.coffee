@@ -11,33 +11,42 @@ screen.font = font
 
 string = "The quick brown fox jumps over the lazy dog"
 
-redraw = (size)->
+redraw = (size,color)->
+	console.info size,color
 	screen.color = 0
 	screen.fillRect()
-	screen.color = 0xff
+	screen.color = Math.abs(color)
 	st = (new Date()).valueOf()
 	j=0
 	i=size
 	while j<=800
 		font.size = i
-		screen.drawString "#{i} #{string}",0,j
+		screen.drawString "#{i} #{color} #{string}",0,j
 		j+=i
 	end =  (new Date()).valueOf()
 	fb.update screen
 	console.info(end-st)
 
-
+color = 15
 size = 24
 input.on 'keyDown' ,(evt)->
 	switch evt.code
-		when input.Keys.KEY_VOLUMEUP
-			size += 2
-			redraw size
-		when input.Keys.KEY_VOLUMEDOWN
-			size -= 2
-			redraw size
+		when input.Keys.KEY_UP
+			size += 1
+			redraw size,color
+		when input.Keys.KEY_DOWN
+			size -= 1
+			redraw size,color
+		when input.Keys.KEY_RIGHT
+			color -= 1
+			color &= 0x0f
+			redraw size,color
+		when input.Keys.KEY_LEFT
+			color += 1
+			color &= 0x0f
+			redraw size,color
 		when input.Keys.KEY_BACK
 		    fb.clear()
 		    process.exit 0
 
-redraw size
+redraw size,color

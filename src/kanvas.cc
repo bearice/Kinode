@@ -13,10 +13,6 @@
 #include "kanvas.h"
 #include "font.h"
 
-#define SYM(x) String::NewSymbol(x)
-#define FUNC(x) FunctionTemplate::New(x)->GetFunction()
-#define THROW(x) ThrowException(Exception::Error(String::New(x)))
-
 using namespace std;
 using namespace v8;
 
